@@ -1,0 +1,103 @@
+name: Release Source Package
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'developer-*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: self-hosted
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('version.json'))['version'])")
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          if [ "$BRANCH" = "main" ]; then
+            RELEASE_TAG="v${VERSION}"
+          else
+            RELEASE_TAG="v${VERSION}-${BRANCH}"
+          fi
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+          echo "Release tag: ${RELEASE_TAG}"
+
+      - name: Create source package
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          PACKAGE_DIR="${REPO}-${VERSION}"
+
+          # 一時的に全てコピー
+          cp -r . "${PACKAGE_DIR}"
+
+          # tar.gz 作成
+          tar czf "${REPO}-${VERSION}.tar.gz" "${PACKAGE_DIR}"
+
+          echo "=== Package contents ==="
+          tar tzf "${REPO}-${VERSION}.tar.gz" | head -20
+          echo "..."
+          echo ""
+          echo "=== Package size ==="
+          ls -lh "${REPO}-${VERSION}.tar.gz"
+
+          rm -rf "${PACKAGE_DIR}"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.RELEASE_TAG }}
+          name: ${{ github.event.repository.name }} ${{ steps.tag.outputs.RELEASE_TAG }}
+          body: |
+            ## ${{ github.event.repository.name }} v${{ steps.version.outputs.VERSION }}
+
+            Source package for offline build.
+
+            ### Usage
+            ```bash
+            tar xzf ${{ github.event.repository.name }}-${{ steps.version.outputs.VERSION }}.tar.gz
+            cd ${{ github.event.repository.name }}-${{ steps.version.outputs.VERSION }}
+            docker/build.sh
+            ```
+          files: |
+            ${{ github.event.repository.name }}-${{ steps.version.outputs.VERSION }}.tar.gz
+          draft: false
+          prerelease: ${{ github.ref_name != 'main' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save to storage
+        if: env.STORAGE_DIR != ''
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          cp "${REPO}-${VERSION}.tar.gz" "$STORAGE_DIR/"
+          echo "Saved to: $STORAGE_DIR/${REPO}-${VERSION}.tar.gz"
+
+      - name: Summary
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          echo "## Source Package Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag:** ${{ steps.tag.outputs.RELEASE_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${GITHUB_REF_NAME}" >> $GITHUB_STEP_SUMMARY
+          SIZE=$(ls -lh "${REPO}-${VERSION}.tar.gz" | awk '{print $5}')
+          echo "- **Package Size:** ${SIZE}" >> $GITHUB_STEP_SUMMARY
