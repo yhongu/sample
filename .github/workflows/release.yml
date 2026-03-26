@@ -38,6 +38,11 @@ jobs:
           echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_OUTPUT
           echo "Release tag: ${RELEASE_TAG}"
 
+      - name: Debug workdir
+        run: |
+          echo "PWD: $(pwd)"
+          echo "REPO: ${{ github.event.repository.name }}"
+
       - name: Create source package
         run: |
           REPO="${{ github.event.repository.name }}"
