@@ -47,7 +47,7 @@ jobs:
         run: |
           REPO="${{ github.event.repository.name }}"
           VERSION="${{ steps.version.outputs.VERSION }}"
-          PACKAGE_DIR="${REPO}-${VERSION}"
+          PACKAGE_DIR="/tmp/${REPO}-${VERSION}"
 
           # 一時的に全てコピー
           cp -r . "${PACKAGE_DIR}"
